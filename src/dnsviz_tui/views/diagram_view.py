@@ -19,7 +19,7 @@ class DiagramView(Static):
 
     DEFAULT_CSS = """
     DiagramView {
-        height: 100%;
+        height: auto;
         padding: 1;
     }
     """

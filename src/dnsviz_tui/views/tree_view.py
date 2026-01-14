@@ -22,7 +22,7 @@ class TreeView(Static):
 
     DEFAULT_CSS = """
     TreeView {
-        height: 100%;
+        height: auto;
         padding: 1;
     }
     """

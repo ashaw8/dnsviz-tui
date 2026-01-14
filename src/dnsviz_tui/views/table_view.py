@@ -18,9 +18,8 @@ class TableView(Static):
 
     DEFAULT_CSS = """
     TableView {
-        height: 100%;
+        height: auto;
         padding: 1;
-        overflow-y: auto;
     }
     """
 
@@ -202,6 +201,65 @@ class TableView(Static):
 
         return table
 
+    def _build_consistency_table(self) -> Table | None:
+        """Build table showing consistency check results across nameservers."""
+        # Check if any zone has consistency data
+        has_consistency = any(
+            zone.consistency is not None for zone in self._chain.zones
+        )
+        if not has_consistency:
+            return None
+
+        table = Table(
+            title="[bold]Nameserver Consistency Check[/bold]",
+            show_header=True,
+            header_style="bold magenta",
+            border_style="magenta",
+            padding=(0, 1),
+            expand=True,
+        )
+
+        table.add_column("Zone", style="bold")
+        table.add_column("Servers", justify="center")
+        table.add_column("Status", justify="center")
+        table.add_column("Issues")
+
+        for zone in self._chain.zones:
+            if not zone.consistency:
+                continue
+
+            c = zone.consistency
+
+            # Server count
+            servers = f"{c.nameservers_responded}/{c.nameservers_queried}"
+
+            # Status
+            if c.is_consistent and c.nameservers_responded > 0:
+                status = Text("✓ Consistent", style="green")
+            elif c.nameservers_responded == 0:
+                status = Text("No response", style="red")
+            else:
+                status = Text("✗ Inconsistent", style="red")
+
+            # Issues
+            if c.issues:
+                issues_text = "; ".join(c.issues[:2])
+                if len(c.issues) > 2:
+                    issues_text += f" (+{len(c.issues) - 2} more)"
+                if len(issues_text) > 50:
+                    issues_text = issues_text[:47] + "..."
+            else:
+                issues_text = "-"
+
+            table.add_row(
+                zone.name,
+                servers,
+                status,
+                issues_text,
+            )
+
+        return table
+
     def _build_additional_records_table(self) -> Table | None:
         """Build table of additional records (SPF, DMARC, etc.)."""
         # Collect all additional records
@@ -281,6 +339,11 @@ class TableView(Static):
             Text(""),
             self._build_rrsig_table(),
         ]
+
+        # Add consistency table if present
+        consistency = self._build_consistency_table()
+        if consistency:
+            tables.extend([Text(""), consistency])
 
         # Add additional records if present
         additional = self._build_additional_records_table()

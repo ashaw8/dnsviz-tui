@@ -161,6 +161,43 @@ class AdditionalRecord:
 
 
 @dataclass
+class ServerResponse:
+    """Response from a single authoritative nameserver."""
+    server_ip: str              # IP address of the server
+    server_name: str            # Hostname if known
+    responded: bool = True      # Did the server respond?
+    error: Optional[str] = None # Error message if failed
+    response_time_ms: float = 0.0
+
+    # Records received
+    dnskey_tags: list[int] = field(default_factory=list)
+    ds_tags: list[int] = field(default_factory=list)
+    has_rrsig: bool = False
+
+
+@dataclass
+class ConsistencyResult:
+    """Result of checking consistency across authoritative nameservers."""
+    zone_name: str
+    nameservers_queried: int = 0
+    nameservers_responded: int = 0
+    is_consistent: bool = True
+    issues: list[str] = field(default_factory=list)
+    server_responses: list[ServerResponse] = field(default_factory=list)
+
+    @property
+    def consistency_status(self) -> str:
+        """Human-readable consistency status."""
+        if not self.server_responses:
+            return "Not checked"
+        if self.nameservers_responded == 0:
+            return "No responses"
+        if self.is_consistent:
+            return f"Consistent ({self.nameservers_responded}/{self.nameservers_queried})"
+        return f"INCONSISTENT ({len(self.issues)} issues)"
+
+
+@dataclass
 class ZoneInfo:
     """Information about a single zone in the chain."""
     name: str                   # Zone name (e.g., "example.com.")
@@ -181,6 +218,9 @@ class ZoneInfo:
 
     # Additional records (only for target zone)
     additional_records: list[AdditionalRecord] = field(default_factory=list)
+
+    # Consistency check results
+    consistency: Optional[ConsistencyResult] = None
 
     @property
     def has_dnssec(self) -> bool:

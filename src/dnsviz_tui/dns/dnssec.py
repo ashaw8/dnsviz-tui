@@ -121,8 +121,13 @@ class DNSSECValidator:
             # Some zones use ZSKs for signing, check all keys
             ksks = zone.dnskeys
 
-        # Try to match DS to DNSKEY
+        # Try to match ALL DS records to DNSKEYs
+        # A valid chain only needs ONE DS to match, but we track all
+        validated_tags = []
+        failed_ds = []
+
         for ds in ds_records:
+            matched = False
             for key in ksks:
                 if key.key_tag != ds.key_tag:
                     continue
@@ -136,8 +141,30 @@ class DNSSECValidator:
 
                 if computed.upper() == ds.digest.upper():
                     ds.validates_key = key.key_tag
-                    return True, f"DS validates DNSKEY {key.key_tag}", key.key_tag
+                    validated_tags.append(key.key_tag)
+                    matched = True
+                    break  # This DS matched, move to next DS
 
+            if not matched:
+                # Check if there's a DNSKEY with matching tag but wrong digest
+                matching_tag_keys = [k for k in zone.dnskeys if k.key_tag == ds.key_tag]
+                if matching_tag_keys:
+                    failed_ds.append(f"DS tag={ds.key_tag} digest mismatch")
+                else:
+                    failed_ds.append(f"DS tag={ds.key_tag} no matching DNSKEY")
+
+        if validated_tags:
+            # At least one DS validated - chain is valid
+            unique_tags = list(set(validated_tags))
+            if len(ds_records) > 1:
+                reason = f"DS validates DNSKEY(s) {unique_tags} ({len(validated_tags)}/{len(ds_records)} DS records)"
+            else:
+                reason = f"DS validates DNSKEY {unique_tags[0]}"
+            return True, reason, unique_tags[0]
+
+        # No DS validated
+        if failed_ds:
+            return False, f"DS validation failed: {'; '.join(failed_ds)}", None
         return False, "No DS record matches any DNSKEY", None
 
     def _validate_rrsig_timing(self, zone: ZoneInfo) -> tuple[bool, str]:

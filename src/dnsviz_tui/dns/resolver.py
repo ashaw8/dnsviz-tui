@@ -18,6 +18,8 @@ from dnsviz_tui.models.chain import (
     ZoneInfo,
     AdditionalRecord,
     ValidationStatus,
+    ConsistencyResult,
+    ServerResponse,
 )
 
 
@@ -226,11 +228,16 @@ class DNSResolver:
 
         return zones
 
-    def query_zone_chain(self, domain: str) -> tuple[list[ZoneInfo], float]:
+    def query_zone_chain(
+        self,
+        domain: str,
+        check_consistency: bool = True
+    ) -> tuple[list[ZoneInfo], float]:
         """Query the complete DNSSEC chain for a domain.
 
         Args:
             domain: Target domain
+            check_consistency: Whether to check consistency across nameservers
 
         Returns:
             Tuple of (list of ZoneInfo objects, query time in ms)
@@ -254,7 +261,181 @@ class DNSResolver:
             if zone_name == hierarchy[-1] or domain.rstrip('.') + '.' == zone_name:
                 zone_info.additional_records = self.query_additional_records(domain)
 
+            # Perform consistency check (skip root zone - too many servers)
+            if check_consistency and zone_name != ".":
+                zone_info.consistency = self.check_consistency(zone_name)
+
             zones.append(zone_info)
 
         query_time = (time.time() - start_time) * 1000
         return zones, query_time
+
+    def get_authoritative_nameservers(self, zone: str) -> list[tuple[str, str]]:
+        """Get authoritative nameservers for a zone.
+
+        Args:
+            zone: Zone name (e.g., "example.com.")
+
+        Returns:
+            List of (hostname, ip_address) tuples
+        """
+        nameservers = []
+
+        try:
+            # Query NS records
+            ns_answer = self._query(zone, "NS")
+            if not ns_answer:
+                return []
+
+            for rdata in ns_answer:
+                ns_name = str(rdata.target)
+
+                # Resolve NS to IP
+                try:
+                    a_answer = self._query(ns_name, "A")
+                    if a_answer:
+                        for a_rdata in a_answer:
+                            nameservers.append((ns_name, str(a_rdata)))
+                except Exception:
+                    pass
+
+        except Exception:
+            pass
+
+        return nameservers
+
+    def query_nameserver_direct(
+        self,
+        nameserver_ip: str,
+        zone: str,
+        timeout: float = 3.0
+    ) -> ServerResponse:
+        """Query a specific nameserver directly for DNSKEY records.
+
+        Args:
+            nameserver_ip: IP address of the nameserver
+            zone: Zone to query
+            timeout: Query timeout in seconds
+
+        Returns:
+            ServerResponse with results
+        """
+        response = ServerResponse(
+            server_ip=nameserver_ip,
+            server_name="",
+            responded=False
+        )
+
+        try:
+            start_time = time.time()
+
+            # Build DNSKEY query with DO bit
+            query = dns.message.make_query(
+                zone,
+                dns.rdatatype.DNSKEY,
+                want_dnssec=True
+            )
+
+            # Query the specific nameserver
+            answer = dns.query.udp(
+                query,
+                nameserver_ip,
+                timeout=timeout
+            )
+
+            response.response_time_ms = (time.time() - start_time) * 1000
+            response.responded = True
+
+            # Extract DNSKEY key tags
+            for rrset in answer.answer:
+                if rrset.rdtype == dns.rdatatype.DNSKEY:
+                    for rdata in rrset:
+                        if isinstance(rdata, DNSKEY):
+                            key_info = self._formatter.parse_dnskey(rdata)
+                            response.dnskey_tags.append(key_info.key_tag)
+                elif rrset.rdtype == dns.rdatatype.RRSIG:
+                    response.has_rrsig = True
+
+        except dns.exception.Timeout:
+            response.error = "Timeout"
+        except Exception as e:
+            response.error = str(e)
+
+        return response
+
+    def check_consistency(
+        self,
+        zone: str,
+        max_servers: int = 5
+    ) -> ConsistencyResult:
+        """Check DNSKEY consistency across authoritative nameservers.
+
+        Args:
+            zone: Zone to check
+            max_servers: Maximum number of servers to query
+
+        Returns:
+            ConsistencyResult with findings
+        """
+        result = ConsistencyResult(zone_name=zone)
+
+        # Get authoritative nameservers
+        nameservers = self.get_authoritative_nameservers(zone)
+        if not nameservers:
+            result.issues.append("Could not find authoritative nameservers")
+            return result
+
+        # Limit the number of servers to query
+        nameservers = nameservers[:max_servers]
+        result.nameservers_queried = len(nameservers)
+
+        # Query each nameserver
+        all_key_sets = []
+
+        for ns_name, ns_ip in nameservers:
+            response = self.query_nameserver_direct(ns_ip, zone)
+            response.server_name = ns_name
+            result.server_responses.append(response)
+
+            if response.responded:
+                result.nameservers_responded += 1
+                all_key_sets.append(set(response.dnskey_tags))
+
+        # Check for consistency
+        if len(all_key_sets) > 1:
+            # Compare all key sets
+            reference_set = all_key_sets[0]
+            for i, key_set in enumerate(all_key_sets[1:], 1):
+                if key_set != reference_set:
+                    result.is_consistent = False
+                    missing = reference_set - key_set
+                    extra = key_set - reference_set
+                    server = result.server_responses[i]
+                    if missing:
+                        result.issues.append(
+                            f"{server.server_name} missing keys: {missing}"
+                        )
+                    if extra:
+                        result.issues.append(
+                            f"{server.server_name} has extra keys: {extra}"
+                        )
+
+        # Check for servers that didn't respond
+        non_responsive = [
+            r for r in result.server_responses if not r.responded
+        ]
+        if non_responsive:
+            for r in non_responsive:
+                result.issues.append(
+                    f"{r.server_ip} did not respond: {r.error or 'unknown'}"
+                )
+
+        # Check for servers without RRSIG (unsigned responses)
+        for r in result.server_responses:
+            if r.responded and not r.has_rrsig and r.dnskey_tags:
+                result.issues.append(
+                    f"{r.server_name} returned DNSKEY without RRSIG"
+                )
+                result.is_consistent = False
+
+        return result

@@ -1,7 +1,7 @@
 """History panel widget for showing query history."""
 
 from textual.widgets import Static, ListView, ListItem, Label
-from textual.containers import Vertical
+from textual.containers import Vertical, Container
 from textual.message import Message
 from rich.text import Text
 from rich.panel import Panel
@@ -48,7 +48,7 @@ class HistoryItem(ListItem):
         yield Label(text)
 
 
-class HistoryPanel(Static):
+class HistoryPanel(Container):
     """Panel showing query history."""
 
     DEFAULT_CSS = """
@@ -57,16 +57,18 @@ class HistoryPanel(Static):
         height: 100%;
         background: #111;
         padding: 0;
+        layout: vertical;
     }
 
     HistoryPanel #history-header {
         height: 3;
+        width: 100%;
         background: #1a1a1a;
-        color: #666;
+        color: #aaa;
         text-align: center;
-        padding: 1 1;
+        content-align: center middle;
         text-style: bold;
-        border-bottom: solid #252525;
+        border-bottom: solid #333;
     }
 
     HistoryPanel #history-list {
@@ -76,7 +78,7 @@ class HistoryPanel(Static):
     }
 
     HistoryPanel #empty-message {
-        color: #444;
+        color: #555;
         text-align: center;
         padding: 2 1;
     }
