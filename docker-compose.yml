@@ -1,0 +1,10 @@
+services:
+  dnsviz-tui:
+    build: .
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./exports:/app/exports
+    environment:
+      - TERM=xterm-256color
+    network_mode: host
