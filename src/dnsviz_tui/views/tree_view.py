@@ -116,40 +116,41 @@ class TreeView(Static):
 
         # Status reason if not secure
         if zone.status_reason and zone.status != ValidationStatus.SECURE:
-            branch.add(Text(f"⚠ {zone.status_reason}", style="dim yellow"))
+            branch.add(Text(f"[!] {zone.status_reason}", style="dim yellow"))
 
         # DNSKEY records
         if zone.dnskeys:
-            keys_branch = branch.add(Text("🔑 DNSKEY Records", style="bold"))
+            keys_branch = branch.add(Text("DNSKEY Records", style="bold"))
             for key in zone.dnskeys:
                 keys_branch.add(self._format_key_info(key))
 
         # DS records
         if zone.ds_records:
-            ds_branch = branch.add(Text("🔗 DS Records (from parent)", style="bold"))
+            ds_branch = branch.add(Text("DS Records (from parent)", style="bold"))
             for ds in zone.ds_records:
                 ds_branch.add(self._format_ds_info(ds))
 
         # RRSIG records
         if zone.rrsigs:
-            sig_branch = branch.add(Text("✍ Signatures (RRSIG)", style="bold"))
+            sig_branch = branch.add(Text("Signatures (RRSIG)", style="bold"))
             for rrsig in zone.rrsigs:
                 sig_branch.add(self._format_rrsig_info(rrsig))
 
         # Additional records (for target zone)
         if zone.additional_records:
-            add_branch = branch.add(Text("📋 Additional Records", style="bold"))
+            add_branch = branch.add(Text("Additional Records", style="bold"))
             for record in zone.additional_records:
                 rec_text = Text()
                 rec_text.append(f"{record.record_type}", style="cyan")
                 rec_text.append(": ")
-                # Truncate long values
+                # Truncate long values (SOA needs more space for serial)
                 value = record.value
-                if len(value) > 60:
-                    value = value[:57] + "..."
+                max_len = 90 if record.record_type == "SOA" else 60
+                if len(value) > max_len:
+                    value = value[:max_len - 3] + "..."
                 rec_text.append(value, style="dim")
                 if record.is_signed:
-                    rec_text.append(" ✓", style="green")
+                    rec_text.append(" [signed]", style="green")
                 add_branch.add(rec_text)
 
         return branch
@@ -181,7 +182,7 @@ class TreeView(Static):
 
         # Build the tree
         tree = Tree(
-            Text("🌐 Chain of Trust", style="bold white"),
+            Text("Chain of Trust", style="bold white"),
             guide_style="dim",
         )
 

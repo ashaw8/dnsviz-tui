@@ -61,12 +61,12 @@ class HistoryPanel(Container):
     }
 
     HistoryPanel #history-header {
-        height: 3;
+        height: 2;
         width: 100%;
         background: #1a1a1a;
         color: #aaa;
         text-align: center;
-        content-align: center middle;
+        content-align: center bottom;
         text-style: bold;
         border-bottom: solid #333;
     }

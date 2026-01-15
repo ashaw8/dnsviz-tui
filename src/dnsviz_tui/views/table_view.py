@@ -281,7 +281,7 @@ class TableView(Static):
 
         table.add_column("Type", style="cyan")
         table.add_column("Name", style="bold")
-        table.add_column("Value", max_width=60)
+        table.add_column("Value")
         table.add_column("TTL", justify="right", style="dim")
         table.add_column("Signed", justify="center")
 
@@ -289,8 +289,10 @@ class TableView(Static):
             signed = Text("✓", style="green") if record.is_signed else Text("-", style="dim")
 
             value = record.value
-            if len(value) > 60:
-                value = value[:57] + "..."
+            # SOA records need more space to show serial
+            max_len = 90 if record.record_type == "SOA" else 60
+            if len(value) > max_len:
+                value = value[:max_len - 3] + "..."
 
             table.add_row(
                 record.record_type,

@@ -163,15 +163,22 @@ class DNSResolver:
                                     break
 
                 for rdata in soa_answer:
-                    # Format SOA nicely: primary NS, admin email, serial, etc.
+                    # Format SOA with serial first (most important), then other fields
+                    # Shorten mname/rname to fit better
+                    mname = str(rdata.mname).rstrip('.')
+                    rname = str(rdata.rname).rstrip('.')
+                    if len(mname) > 25:
+                        mname = mname[:22] + "..."
+                    if len(rname) > 25:
+                        rname = rname[:22] + "..."
                     soa_value = (
-                        f"primary={rdata.mname} "
-                        f"admin={rdata.rname} "
                         f"serial={rdata.serial} "
+                        f"primary={mname} "
+                        f"admin={rname} "
                         f"refresh={rdata.refresh} "
                         f"retry={rdata.retry} "
                         f"expire={rdata.expire} "
-                        f"minimum={rdata.minimum}"
+                        f"min={rdata.minimum}"
                     )
                     records.append(AdditionalRecord(
                         record_type="SOA",
