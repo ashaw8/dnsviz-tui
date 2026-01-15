@@ -133,7 +133,7 @@ class DNSResolver:
         return ds_records
 
     def query_additional_records(self, domain: str) -> list[AdditionalRecord]:
-        """Query additional records for a domain (SPF, DMARC, etc.).
+        """Query additional records for a domain (SOA, NS, SPF, DMARC, etc.).
 
         Args:
             domain: Domain name
@@ -147,7 +147,81 @@ class DNSResolver:
         if not domain.endswith('.'):
             domain = domain + '.'
 
-        # Query common record types
+        # Query SOA record first (zone authority info)
+        try:
+            soa_answer = self._query(domain, "SOA")
+            if soa_answer:
+                has_rrsig = False
+                rrsig_info = None
+                if soa_answer.response:
+                    for rrset in soa_answer.response.answer:
+                        if rrset.rdtype == dns.rdatatype.RRSIG:
+                            for rdata in rrset:
+                                if isinstance(rdata, RRSIG):
+                                    has_rrsig = True
+                                    rrsig_info = self._formatter.parse_rrsig(rdata)
+                                    break
+
+                for rdata in soa_answer:
+                    # Format SOA nicely: primary NS, admin email, serial, etc.
+                    soa_value = (
+                        f"primary={rdata.mname} "
+                        f"admin={rdata.rname} "
+                        f"serial={rdata.serial} "
+                        f"refresh={rdata.refresh} "
+                        f"retry={rdata.retry} "
+                        f"expire={rdata.expire} "
+                        f"minimum={rdata.minimum}"
+                    )
+                    records.append(AdditionalRecord(
+                        record_type="SOA",
+                        name=domain,
+                        value=soa_value,
+                        ttl=soa_answer.rrset.ttl if soa_answer.rrset else 0,
+                        is_signed=has_rrsig,
+                        rrsig=rrsig_info,
+                    ))
+        except Exception:
+            pass
+
+        # Query NS records (nameservers)
+        try:
+            ns_answer = self._query(domain, "NS")
+            if ns_answer:
+                has_rrsig = False
+                rrsig_info = None
+                if ns_answer.response:
+                    for rrset in ns_answer.response.answer:
+                        if rrset.rdtype == dns.rdatatype.RRSIG:
+                            for rdata in rrset:
+                                if isinstance(rdata, RRSIG):
+                                    has_rrsig = True
+                                    rrsig_info = self._formatter.parse_rrsig(rdata)
+                                    break
+
+                for rdata in ns_answer:
+                    ns_name = str(rdata.target)
+                    # Try to resolve NS to IP for display
+                    ns_ip = ""
+                    try:
+                        a_answer = self._query(ns_name, "A")
+                        if a_answer:
+                            ns_ip = f" ({', '.join(str(r) for r in a_answer)})"
+                    except Exception:
+                        pass
+
+                    records.append(AdditionalRecord(
+                        record_type="NS",
+                        name=domain,
+                        value=f"{ns_name}{ns_ip}",
+                        ttl=ns_answer.rrset.ttl if ns_answer.rrset else 0,
+                        is_signed=has_rrsig,
+                        rrsig=rrsig_info,
+                    ))
+        except Exception:
+            pass
+
+        # Query other common record types
         record_queries = [
             (domain, "A"),
             (domain, "AAAA"),
