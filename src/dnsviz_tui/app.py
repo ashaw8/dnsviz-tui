@@ -88,23 +88,34 @@ class ExportModal(ModalScreen[str | None]):
 
     def _export(self, format: str) -> None:
         """Perform export and dismiss."""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        domain_safe = self.chain.target_domain.rstrip('.').replace('.', '_')
-        base_path = Path("exports") / f"{domain_safe}_{timestamp}"
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            domain_safe = self.chain.target_domain.rstrip('.').replace('.', '_')
 
-        exported = []
+            # Use absolute path to ensure exports go to the right place
+            # Try /app/exports first (Docker), then ./exports (local)
+            exports_dir = Path("/app/exports")
+            if not exports_dir.exists():
+                exports_dir = Path.cwd() / "exports"
 
-        if format in ("json", "both"):
-            json_path = base_path.with_suffix(".json")
-            export_json(self.chain, json_path)
-            exported.append(str(json_path))
+            exports_dir.mkdir(parents=True, exist_ok=True)
+            base_path = exports_dir / f"{domain_safe}_{timestamp}"
 
-        if format in ("text", "both"):
-            text_path = base_path.with_suffix(".txt")
-            export_text(self.chain, text_path)
-            exported.append(str(text_path))
+            exported = []
 
-        self.dismiss(", ".join(exported))
+            if format in ("json", "both"):
+                json_path = base_path.with_suffix(".json")
+                export_json(self.chain, json_path)
+                exported.append(str(json_path))
+
+            if format in ("text", "both"):
+                text_path = base_path.with_suffix(".txt")
+                export_text(self.chain, text_path)
+                exported.append(str(text_path))
+
+            self.dismiss(", ".join(exported))
+        except Exception as e:
+            self.dismiss(f"Export failed: {e}")
 
 
 class ResolverModal(ModalScreen[list[str] | None]):
@@ -258,6 +269,7 @@ class DNSVizApp(App):
         Binding("3", "view_table", "Table"),
         Binding("e", "export", "Export"),
         Binding("r", "resolver", "Resolver"),
+        Binding("s", "screenshot", "Screenshot"),
     ]
 
     def __init__(self):
@@ -379,6 +391,26 @@ class DNSVizApp(App):
 
     def action_focus_input(self) -> None:
         self.query_one("#domain-input").focus()
+
+    def action_screenshot(self) -> None:
+        """Save a screenshot of the current view."""
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            domain = self._current_chain.target_domain.rstrip('.').replace('.', '_') if self._current_chain else "dnsviz"
+
+            # Use absolute path for screenshots
+            exports_dir = Path("/app/exports")
+            if not exports_dir.exists():
+                exports_dir = Path.cwd() / "exports"
+
+            exports_dir.mkdir(parents=True, exist_ok=True)
+            screenshot_path = exports_dir / f"{domain}_{timestamp}.svg"
+
+            # Save screenshot
+            self.save_screenshot(str(screenshot_path))
+            self.notify(f"Screenshot saved: {screenshot_path}")
+        except Exception as e:
+            self.notify(f"Screenshot failed: {e}", severity="error")
 
     def on_history_panel_history_selected(self, event: HistoryPanel.HistorySelected) -> None:
         self._set_chain(event.chain)
