@@ -115,6 +115,9 @@ def export_json(chain: TrustChain, path: Path | str | None = None) -> str:
 
     Returns:
         JSON string
+
+    Raises:
+        IOError: If file write fails
     """
     data = chain_to_dict(chain)
     json_str = json.dumps(data, indent=2)
@@ -122,6 +125,18 @@ def export_json(chain: TrustChain, path: Path | str | None = None) -> str:
     if path:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json_str)
+
+        # Write with explicit flush to ensure data persists
+        with open(path, 'w') as f:
+            f.write(json_str)
+            f.flush()
+            import os
+            os.fsync(f.fileno())
+
+        # Verify the file was written
+        if not path.exists():
+            raise IOError(f"File was not created: {path}")
+        if path.stat().st_size == 0:
+            raise IOError(f"File is empty: {path}")
 
     return json_str

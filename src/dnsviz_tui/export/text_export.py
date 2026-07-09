@@ -138,6 +138,9 @@ def export_text(chain: TrustChain, path: Path | str | None = None) -> str:
 
     Returns:
         Plain text string
+
+    Raises:
+        IOError: If file write fails
     """
     sections = [_format_header(chain)]
 
@@ -151,6 +154,18 @@ def export_text(chain: TrustChain, path: Path | str | None = None) -> str:
     if path:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
+
+        # Write with explicit flush to ensure data persists
+        import os
+        with open(path, 'w') as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+
+        # Verify the file was written
+        if not path.exists():
+            raise IOError(f"File was not created: {path}")
+        if path.stat().st_size == 0:
+            raise IOError(f"File is empty: {path}")
 
     return text

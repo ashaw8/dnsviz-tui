@@ -12,11 +12,9 @@ COPY src/ src/
 # Install the package
 RUN pip install --no-cache-dir .
 
-# Create exports directory
-RUN mkdir -p /app/exports
-
 # Set environment for better terminal support
 ENV TERM=xterm-256color
 ENV PYTHONUNBUFFERED=1
 
+# Note: /app/exports is created via volume mount from host
 ENTRYPOINT ["python", "-m", "dnsviz_tui"]

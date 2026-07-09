@@ -106,16 +106,27 @@ class ExportModal(ModalScreen[str | None]):
             if format in ("json", "both"):
                 json_path = base_path.with_suffix(".json")
                 export_json(self.chain, json_path)
-                exported.append(str(json_path))
+                # Verify file exists and has content
+                if json_path.exists() and json_path.stat().st_size > 0:
+                    exported.append(str(json_path))
+                else:
+                    self.dismiss(f"JSON export failed - file not created at {json_path}")
+                    return
 
             if format in ("text", "both"):
                 text_path = base_path.with_suffix(".txt")
                 export_text(self.chain, text_path)
-                exported.append(str(text_path))
+                # Verify file exists and has content
+                if text_path.exists() and text_path.stat().st_size > 0:
+                    exported.append(str(text_path))
+                else:
+                    self.dismiss(f"Text export failed - file not created at {text_path}")
+                    return
 
-            self.dismiss(", ".join(exported))
+            self.dismiss(f"Saved: {', '.join(exported)}")
         except Exception as e:
-            self.dismiss(f"Export failed: {e}")
+            import traceback
+            self.dismiss(f"Export failed: {e}\n{traceback.format_exc()}")
 
 
 class ResolverModal(ModalScreen[list[str] | None]):

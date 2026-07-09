@@ -61,22 +61,8 @@ def estimate_key_length(algorithm: int, key_data: bytes) -> int:
             exp_len = key_data[0]
             return (len(key_data) - 1 - exp_len) * 8
 
-    # ECDSA P-256
-    if algorithm == 13:
-        return 256
-
-    # ECDSA P-384
-    if algorithm == 14:
-        return 384
-
-    # Ed25519
-    if algorithm == 15:
-        return 256
-
-    # Ed448
-    if algorithm == 16:
-        return 448
-
+    # ECDSA / EdDSA: report the raw key-data size, matching dnsviz.net
+    # (P-256 keys are 64 bytes of x||y, shown as "512 bits" there).
     return key_len
 
 
