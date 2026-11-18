@@ -48,6 +48,7 @@ htmlcov/
 # Exports (keep directory but ignore exported files)
 exports/*.json
 exports/*.txt
+exports/*.svg
 
 # OS
 .DS_Store
