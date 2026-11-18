@@ -3,6 +3,7 @@
 from datetime import datetime
 from pathlib import Path
 
+from rich.terminal_theme import TerminalTheme
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
@@ -20,6 +21,7 @@ from dnsviz_tui.widgets.domain_input import DomainInput
 from dnsviz_tui.widgets.history_panel import HistoryPanel
 from dnsviz_tui.export.json_export import export_json
 from dnsviz_tui.export.text_export import export_text
+from dnsviz_tui.export.svg_export import export_svg
 
 
 class ExportModal(ModalScreen[str | None]):
@@ -404,10 +406,18 @@ class DNSVizApp(App):
         self.query_one("#domain-input").focus()
 
     def action_screenshot(self) -> None:
-        """Save a screenshot of the current view."""
+        """Export the active view in full as SVG.
+
+        Renders the view's content offscreen rather than grabbing the
+        terminal, so the whole graph is captured even when it is taller than
+        the window or scrolled, and the surrounding UI is left out.
+        """
+        if not self._current_chain:
+            self.notify("Nothing to capture - query a domain first", severity="warning")
+            return
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            domain = self._current_chain.target_domain.rstrip('.').replace('.', '_') if self._current_chain else "dnsviz"
+            domain = self._current_chain.target_domain.rstrip('.').replace('.', '_')
 
             # Use absolute path for screenshots
             exports_dir = Path("/app/exports")
@@ -415,13 +425,35 @@ class DNSVizApp(App):
                 exports_dir = Path.cwd() / "exports"
 
             exports_dir.mkdir(parents=True, exist_ok=True)
-            screenshot_path = exports_dir / f"{domain}_{timestamp}.svg"
+            screenshot_path = exports_dir / f"{domain}_{self._current_view}_{timestamp}.svg"
 
-            # Save screenshot
-            self.save_screenshot(str(screenshot_path))
+            # Render at the view's on-screen width so the export matches what
+            # you see; the diagram sizes its layout from that width too.
+            view = self.query_one(f"#{self._current_view}-view")
+            width = view.size.width if view.size.width > 20 else 120
+            export_svg(
+                view.render(),
+                screenshot_path,
+                width,
+                title=f"dnsviz-tui - {self._current_chain.target_domain}",
+                theme=self._export_theme(view),
+            )
             self.notify(f"Screenshot saved: {screenshot_path}")
         except Exception as e:
             self.notify(f"Screenshot failed: {e}", severity="error")
+
+    def _export_theme(self, view) -> TerminalTheme:
+        """Colours the view is actually drawn with under the current theme:
+        its effective background and text colour, plus the theme's ANSI
+        palette (Textual maps ANSI colours differently in dark and light)."""
+        _, _, background, foreground = view.colors
+        ansi = self.ansi_theme.ansi_colors
+        return TerminalTheme(
+            background.rgb,
+            foreground.rgb,
+            [ansi[i] for i in range(8)],
+            [ansi[i] for i in range(8, 16)],
+        )
 
     def on_history_panel_history_selected(self, event: HistoryPanel.HistorySelected) -> None:
         self._set_chain(event.chain)
