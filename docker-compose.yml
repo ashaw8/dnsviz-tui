@@ -1,12 +1,12 @@
 services:
   dnsviz-tui:
     build: .
+    image: dnsviz-tui:latest
+    # Run as the host user so exported files aren't owned by root.
+    user: "${UID:-1000}:${GID:-1000}"
     stdin_open: true
     tty: true
-    volumes:
-      - type: bind
-        source: ./exports
-        target: /app/exports
-    environment:
-      - TERM=xterm-256color
+    read_only: true
     network_mode: host
+    volumes:
+      - ./exports:/app/exports
